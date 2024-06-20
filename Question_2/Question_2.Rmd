@@ -99,18 +99,19 @@ gc() # garbage collection - It can be useful to call gc after a large object has
 library(tidyverse)
 list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
 ```
+
 #Popularity plots
 Before comparing Metallica and ColdPlay, a box plot representing albums of both bands and how popular they are is presented below.
 
 ```{r}
-clean_music_data()
-create_popularity_plots(clean_coldplay,clean_metallica)
+clean_music_data(coldplay,metallica)
+create_popularity_plots(clean_data_coldplay,clean_data_metallica)
 ```
 From the plot it is seen for Metallica, that Metallica is the most popular album. Comparing this with ColdPlay one sees that the album a A Rush of Blood to the Head is the most popular album. From the plot one sees that Metallica's most popular album is more popular than ColdPlay's most popular album
 
-Next A boxplot is drawn comparing 
+Next A bar plot is drawn comparing 
 
 ```{r}
-create_bar_plot(coldplay_notlive,metallica_clean)
+create_bar_plot(,metallica_clean)
 ```
 

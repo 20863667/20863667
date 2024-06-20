@@ -1,12 +1,12 @@
 #reading in olympic data
-process_olympics_data <- function(gdp_path, summer_path, winter_path) {
+process_olympics_data <- function(gdp, summer, winter) {
     library(tidyverse)
     library(janitor)
 
-    # Read the datasets
-    gdp <- read_rds(gdp_path) %>% clean_names()
-    summer <- read_rds(summer_path) %>% clean_names()
-    winter <- read_rds(winter_path) %>% clean_names()
+    # # Read the datasets
+    # gdp <- read_rds(gdp_path) %>% clean_names()
+    # summer <- read_rds(summer_path) %>% clean_names()
+    # winter <- read_rds(winter_path) %>% clean_names()
 
     # Add Olympics type
     summer <- summer %>% mutate(olympics = "Summer")

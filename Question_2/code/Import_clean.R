@@ -1,12 +1,9 @@
 #Importing the data and cleaing
-clean_music_data <- function(coldplay_path = "data/Coldplay.csv", metallica_path = "data/metallica.csv") {
+clean_music_data <- function(path_coldplay,path_metallica) {
     library(dplyr)
     library(readr)
-
-    # Read the data
-    coldplay <- read_csv(coldplay_path)
-    metallica <- read_csv(metallica_path)
-
+    coldplay <- read_csv(path_coldplay)
+    metallica <- read_csv(path_metallica)
     # Remove live performances from Coldplay
     clean_coldplay <- coldplay %>% filter(!grepl("live", name, ignore.case = TRUE))
 

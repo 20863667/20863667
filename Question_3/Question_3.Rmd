@@ -101,6 +101,12 @@ source("code/process_data.R")
 list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
 
 ```
+```{r}
+#Loading in the data
+alloc <- read_csv("data/Financial Allocations.csv")
+commit <- read_csv("data/Financial Commitments.csv")
+```
+
 
 #Question 3
 
@@ -109,13 +115,12 @@ Graphs have been constructed to see how the EU members compares to other countri
 Below aid allocation and aid comitmment has been graphed as well as, and the reason that aid was given
 
 ```{r}
-process_data(alloc, commit)
+alloc_plus_commit <- process_data(alloc, commit)
 plot_allocation_data(alloc_plus_commit)
 ```
 From the above graph one can see that aid allocation from the UK far outweighs allocation from EU Members. It is also interesting to note that the UK has committed quite a bit of military aid whereas If one looks to the EU. Those countries commit more to financial allocations 
 
 ```{r}
-process_data("data/Financial Allocation.csv", "data/Financial Commitments.csv")
 plot_commitment_data(alloc_plus_commit)
 ```
 The same pattern is seen for commitment. This graphic shows that the EU could be doing more when coming to aid Ukraine in the face of war
