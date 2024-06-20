@@ -1,10 +1,10 @@
-process_data <- function(alloc_path, commit_path) {
+process_data <- function(alloc,commit) {
     library(tidyverse)
     library(janitor)
 
     # Reading in the data
-    alloc <- read_csv(alloc_path)
-    commit <- read_csv(commit_path)
+    alloc <- read_csv("data/Finanicial Allocations.csv")
+    commit <- read_csv("data/Financial Commitments.csv")
 
     # Joining the two datasets for analysis
     alloc_plus_commit <- left_join(commit, alloc, by = c("Country", "EU member")) %>% clean_names()

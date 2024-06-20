@@ -21,4 +21,701 @@ library(tidyverse)
 list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
 ```
 
+#Explanation
+Here I will explain my code, unfortunately things have gone horribly wrong I worked incorrectly admittedly. I worked in code folders and planned to move it over to readme's and functions and it went wrong but I will try to explain what my thinking was for each of question 1-4. In the hope of at least getting some marks. All my code was working until I tried putting into the readme and everything broke. The .rmd file did not want to knit either. 
 
+#Question 1
+
+
+```{r}
+#Data Importing
+
+data_preparation <- function(baby_names_path, charts_path, hbo_titles_path, hbo_credits_path) {
+    library(dplyr)
+    library(readr)
+    library(janitor)
+
+    Baby_Names <- read_rds(baby_names_path) %>% clean_names()
+    charts <- read_rds(charts_path)
+    HBO_Titles <- read_rds(hbo_titles_path)
+    HBO_Credits <- read_rds(hbo_credits_path)
+
+    return(list(Baby_Names = Baby_Names, charts = charts, HBO_Titles = HBO_Titles, HBO_Credits = HBO_Credits))
+}
+
+```
+
+With this code I wanted to upload the data using read_rds to read in the data and store it in a tibble. The data was stored in the data file.
+
+```{r}
+#Spearman rank correlation
+
+calculate_spearman_correlation <- function(Baby_Names) {
+    library(dplyr)
+
+    # Function to get top 25 names for each gender and year
+    get_top_names <- function(data, year, gender) {
+        data %>%
+            filter(year == !!year, gender == !!gender) %>%
+            top_n(25, wt = count) %>%
+            arrange(desc(count))
+    }
+
+    # Get top 25 names by year and gender
+    top_names_by_year <- Baby_Names %>%
+        group_by(year, gender) %>%
+        do(get_top_names(., .$year[1], .$gender[1])) %>%
+        ungroup()
+
+    # Function to calculate Spearman correlation for a given year and gender
+    calculate_spearman <- function(year, gender) {
+        current_year_names <- top_names_by_year %>%
+            filter(year == !!year, gender == !!gender) %>%
+            select(name)
+
+        correlations <- sapply(1:3, function(offset) {
+            next_year_names <- top_names_by_year %>%
+                filter(year == !!(year + offset), gender == !!gender) %>%
+                select(name)
+
+            common_names <- intersect(current_year_names$name, next_year_names$name)
+
+            if (length(common_names) < 2) return(NA)
+
+            current_ranks <- match(common_names, current_year_names$name)
+            next_ranks <- match(common_names, next_year_names$name)
+
+            cor(current_ranks, next_ranks, method = "spearman")
+        })
+
+        data.frame(
+            year = year,
+            gender = gender,
+            cor_1_year = correlations[1],
+            cor_2_year = correlations[2],
+            cor_3_year = correlations[3]
+        )
+    }
+
+    # Apply the function across years and genders
+    correlations <- Baby_Names %>%
+        filter(year >= 1910 & year <= 2011) %>%
+        distinct(year, gender) %>%
+        rowwise() %>%
+        do(calculate_spearman(.$year, .$gender)) %>%
+        ungroup()
+
+    return(correlations)
+}
+```
+
+This Code was to calculate the spearman correlations for every year, up to three years
+
+```{r}
+#Spearman Plot function
+
+plot_spearman_correlation <- function(correlations, title = "Spearman Rank Correlation of Baby Names Over Time", subtitle = "Comparing each year’s top 25 names with the next 3 years", base_size = 15) {
+    library(ggplot2)
+    library(tidyr)
+
+    # Prepare the data for plotting
+    correlations_long <- correlations %>%
+        gather(key = "lag", value = "correlation", starts_with("cor_"))
+
+    # Plot the correlations
+    ggplot(correlations_long, aes(x = year, y = correlation, color = lag)) +
+        geom_line(size = 1) +
+        facet_grid(gender ~ lag, scales = "free_y") +
+        scale_color_manual(values = c("cor_1_year" = "#1f77b4", "cor_2_year" = "#ff7f0e", "cor_3_year" = "#2ca02c"),
+                           labels = c("1 year", "2 years", "3 years")) +
+        labs(
+            title = title,
+            subtitle = subtitle,
+            x = "Year",
+            y = "Spearman Rank Correlation",
+            color = "Comparison with"
+        ) +
+        theme_minimal(base_size = base_size) +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5),
+            legend.position = "bottom",
+            legend.title = element_text(face = "bold"),
+            legend.background = element_rect(fill = "lightgray", size = 0.5, linetype = "solid", color = "darkgray")
+        )
+}
+```
+This graphs the Spearman rank correlation, facet_grid splits each of the series from lag(1) to lag(3) for the top 25 male and female names. 
+
+```{r}
+#Generate table of top boy and girls name
+generate_top_names_tables <- function(top_25_names) {
+    library(dplyr)
+    library(gt)
+    library(scales)
+
+    # Split into boys' and girls' tables
+    top_25_girls <- top_25_names %>%
+        filter(gender == "F") %>%
+        select(-gender) %>%
+        arrange(desc(total_count))
+
+    top_25_boys <- top_25_names %>%
+        filter(gender == "M") %>%
+        select(-gender) %>%
+        arrange(desc(total_count))
+
+    # Create a gt table for girls
+    girls_table <- top_25_girls %>%
+        gt() %>%
+        tab_header(
+            title = "Top 25 Most Popular Girls' Names (1910-2014)",
+            subtitle = "Based on total count across all US states"
+        ) %>%
+        cols_label(
+            name = "Name",
+            total_count = "Total Count"
+        ) %>%
+        fmt_number(
+            columns = vars(total_count),
+            sep_mark = ",",
+            decimals = 0
+        ) %>%
+        data_color(
+            columns = vars(total_count),
+            colors = scales::col_numeric(
+                palette = c("white", "pink"),
+                domain = NULL
+            )
+        )
+
+    # Create a gt table for boys
+    boys_table <- top_25_boys %>%
+        gt() %>%
+        tab_header(
+            title = "Top 25 Most Popular Boys' Names (1910-2014)",
+            subtitle = "Based on total count across all US states"
+        ) %>%
+        cols_label(
+            name = "Name",
+            total_count = "Total Count"
+        ) %>%
+        fmt_number(
+            columns = vars(total_count),
+            sep_mark = ",",
+            decimals = 0
+        ) %>%
+        data_color(
+            columns = vars(total_count),
+            colors = scales::col_numeric(
+                palette = c("white", "lightblue"),
+                domain = NULL
+            )
+        )
+
+    return(list(girls_table = girls_table, boys_table = boys_table))
+}
+```
+This code takes the top 25 names average over the period and prints them in a nice table. The Idea was to see which names remained popular over the whole period
+
+```{r}
+#Heatmap_function
+create_heatmap <- function(Baby_Names, start_year = 1910, end_year = 2014, top_n = 25, base_size = 12) {
+    library(dplyr)
+    library(ggplot2)
+
+    # Function to get top 25 names for each gender and year
+    get_top_names <- function(data, year, gender) {
+        data %>%
+            filter(year == !!year, gender == !!gender) %>%
+            top_n(top_n, wt = count) %>%
+            arrange(desc(count))
+    }
+
+    # Get top names by year and gender
+    top_names_by_year <- Baby_Names %>%
+        filter(year >= start_year & year <= end_year) %>%
+        group_by(year, gender) %>%
+        do(get_top_names(., .$year[1], .$gender[1])) %>%
+        ungroup()
+
+    # Prepare data for heatmap
+    heatmap_data <- top_names_by_year %>%
+        mutate(name = factor(name, levels = unique(name))) %>%
+        select(year, name, count, gender)
+
+    # Create the heatmap
+    ggplot(heatmap_data, aes(x = name, y = year, fill = count)) +
+        geom_tile(color = "white") +
+        scale_fill_gradient(low = "white", high = "blue", name = "Count") +
+        labs(
+            title = "Top 25 Most Popular Baby Names",
+            subtitle = paste("Color intensity represents the count of the names from", start_year, "to", end_year),
+            x = "Name",
+            y = "Year"
+        ) +
+        facet_wrap(~ gender, scales = "free_x", ncol = 1) +
+        theme_minimal(base_size = base_size) +
+        theme(
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5)
+        )
+}
+
+
+```
+
+This is the function for the heatmap, the Idea was for the heatmap to measure popularity of names over the years and how it faded away or became popular. facet_wrap is used to split on gender. fill = count is used to show how many people had a specific name in a year.
+
+#Question 2
+
+```{r}
+clean_music_data <- function(coldplay_path = "data/Coldplay.csv", metallica_path = "data/metallica.csv") {
+    library(dplyr)
+    library(readr)
+
+    # Read the data
+    coldplay <- read_csv(coldplay_path)
+    metallica <- read_csv(metallica_path)
+
+    # Remove live performances from Coldplay
+    clean_coldplay <- coldplay %>% filter(!grepl("live", name, ignore.case = TRUE))
+
+    # Remove live performances and other issue entries from Metallica
+    clean_metallica <- metallica %>%
+        filter(!grepl("live", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Demo", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Writing in Progress", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Remastered", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Tapes", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Rehearsal", name, ignore.case = TRUE)) %>%
+        filter(!grepl("(Work in Progress Rough Mix)", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Radio Edit", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Rough Mix", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Edit", name, ignore.case = TRUE)) %>%
+        filter(!grepl("Remastered", album, ignore.case = TRUE)) %>%
+        filter(!grepl("Remaster", album, ignore.case = TRUE)) %>%
+        filter(!grepl("Some Kind Of Monster (Live)", album, ignore.case = TRUE)) %>%
+        filter(!grepl("Garage, Inc.", album, ignore.case = TRUE))
+
+    return(list(clean_coldplay = clean_coldplay, clean_metallica = clean_metallica))
+}
+```
+This imports the data and cleans it. grepl was used to remove any instance of metallica songs that was not studio recorded. The same was done for ColdPlay albeit it was a bit easier.
+
+```{r}
+create_popularity_plots <- function(clean_coldplay, clean_metallica) {
+    library(ggplot2)
+
+    # Coldplay popularity by album
+    popularity_plot_coldplay <- clean_coldplay %>%
+        ggplot() +
+        geom_boxplot(aes(album_name, popularity, fill = album_name)) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        labs(
+            title = "Popularity by album: Coldplay",
+            x = "Album name",
+            y = "Popularity",
+            fill = "Album name"
+        )
+
+    # Metallica popularity by album
+    popularity_plot_metallica <- clean_metallica %>%
+        ggplot() +
+        geom_boxplot(aes(album, popularity, fill = album)) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        labs(
+            title = "Popularity by album: Metallica",
+            x = "Album name",
+            y = "Popularity",
+            fill = "Album name"
+        )
+
+    return(list(coldplay_plot = popularity_plot_coldplay, metallica_plot = popularity_plot_metallica))
+}
+```
+
+This draws the popularity plot, I did the box plot as that was the one shown for Metallica. I did it for ColdPlay as well. Text angle was changed to 90 degrees so there is no overlap.
+
+```{r}
+create_bar_plot <- function(clean_coldplay, clean_metallica) {
+    library(dplyr)
+    library(ggplot2)
+    library(scales)  # for rescale function
+    library(tidyr)
+
+    # Rename and mutate columns as necessary
+    clean_coldplay <- clean_coldplay %>% rename(album = album_name)
+    clean_metallica <- clean_metallica %>% mutate(duration = duration_ms / 1000) %>% rename(duration = duration_ms)
+    clean_coldplay <- clean_coldplay %>% mutate(artist = "Coldplay")
+    clean_metallica <- clean_metallica %>% mutate(artist = "Metallica")
+
+    # Combine the datasets
+    coldplay_metallica <- bind_rows(clean_coldplay, clean_metallica)
+
+    # Prepare the data for the bar plot
+    bar_data <- coldplay_metallica %>%
+        select(artist, album, acousticness, danceability, energy, instrumentalness, liveness, loudness, speechiness, tempo, valence) %>%
+        group_by(artist, album) %>%
+        summarise(across(everything(), mean, na.rm = TRUE))
+
+    # Normalize the data to bring all metrics to the same scale (0 to 1)
+    bar_data_normalized <- bar_data %>%
+        mutate(across(acousticness:valence, ~ rescale(.x, to = c(0, 1))))
+
+    # Transform data to long format for plotting using gather
+    bar_data_long <- bar_data_normalized %>%
+        gather(key = "metric", value = "value", -artist, -album)
+
+    # Create faceted bar plot
+    bar_plot <- ggplot(bar_data_long, aes(x = album, y = value, fill = artist)) +
+        geom_bar(stat = "identity", position = "dodge") +
+        facet_wrap(~ metric, scales = "free_y", ncol = 3) +
+        scale_fill_manual(values = c("Coldplay" = "blue", "Metallica" = "red")) +
+        labs(
+            title = "Comparison of Coldplay and Metallica Across Various Metrics by Album",
+            subtitle = "Normalized mean values of musical characteristics",
+            x = "Album",
+            y = "Normalized Value"
+        ) +
+        theme_minimal(base_size = 14) +
+        theme(
+            plot.title = element_text(hjust = 0.5, face = "bold"),
+            plot.subtitle = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "bottom"
+        )
+
+    return(bar_plot)
+}
+```
+This creates a bar plot to compare albums in terms of the metrics given such as valence. I took averages so that of songs within the album of both Metallica and Coldplay and produce a barplot for each. Again the data was first cleaned so that rowbind could be used to merge the data. A variable was also created to track whether it was Metallica or ColdPLay. 
+
+#Question 3
+
+```{r}
+process_data <- function(alloc,commit) {
+    library(tidyverse)
+    library(janitor)
+
+    # Reading in the data
+    alloc <- read_csv("data/Finanicial Allocations.csv")
+    commit <- read_csv("data/Financial Commitments.csv")
+
+    # Joining the two datasets for analysis
+    alloc_plus_commit <- left_join(commit, alloc, by = c("Country", "EU member")) %>% clean_names()
+
+    # Reorder the country factor based on eu_member
+    alloc_plus_commit <- alloc_plus_commit %>%
+        mutate(country = factor(country, levels = country[order(eu_member, decreasing = TRUE)]))
+
+    return(alloc_plus_commit)
+}
+```
+Again the data is read in and cleaned, the names of the columns are made more suitable for r using clean_names() to augment it.
+
+```{r}
+plot_commitment_data <- function(alloc_plus_commit) {
+    library(dplyr)
+    library(tidyr)
+    library(ggplot2)
+
+    # Transform the data
+    commit_long <- alloc_plus_commit %>%
+        select(country, eu_member, gdp_in_2021_billion, financial_commitments_billion, humanitarian_commitments_billion, military_commitments_billion) %>%
+        gather(key = "commitment_type", value = "amount_billion",
+               financial_commitments_billion, humanitarian_commitments_billion, military_commitments_billion)
+
+    # Create the plot
+    plot <- commit_long %>%
+        filter(country != "EU (Commission and Council)") %>%
+        group_by(eu_member) %>%
+        ggplot(aes(x = country, y = amount_billion, fill = commitment_type)) +
+        geom_bar(stat = "identity", position = "stack") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        labs(
+            title = "Aid Commitment By Type",
+            subtitle = "All countries to the left of Australia are EU members",
+            x = "Country",
+            y = "Total Bilateral Commitments (Billion)",
+            fill = "Commitment Type"
+        )
+
+    return(plot)
+}
+```
+This function plots the amount committed towards Ukraine while splitting on whether it was humanitarian, financial or military aid. Position = "stack" allows for the bars to be coloured differently depending on the amount of the types of aid.
+
+```{r}
+plot_allocation_data <- function(alloc_plus_commit) {
+    library(dplyr)
+    library(tidyr)
+    library(ggplot2)
+
+    # Transform the data
+    alloc_long <- alloc_plus_commit %>%
+        select(country, eu_member, gdp_in_2021_billion, financial_allocations_billion, humanitarian_allocations_billion, military_allocations_billion) %>%
+        gather(key = "allocation_type", value = "amount_billion",
+               financial_allocations_billion, humanitarian_allocations_billion, military_allocations_billion)
+
+    # Create the plot
+    plot <- alloc_long %>%
+        filter(country != "EU (Commission and Council)") %>%
+        group_by(eu_member) %>%
+        ggplot(aes(x = country, y = amount_billion, fill = allocation_type)) +
+        geom_bar(stat = "identity", position = "stack") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        labs(
+            title = "Aid Allocation By Type",
+            subtitle = "All countries to the left of Australia are EU members",
+            x = "Country",
+            y = "Total Bilateral Allocations (Billion)",
+            fill = "Allocation Type"
+        )
+
+    return(plot)
+}
+```
+
+This function does the exact same as above but this is for the allocation. Also all EU members are to the left of Australia.
+
+#Question 4
+
+```{r}
+#reading in olympic data
+process_olympics_data <- function(gdp_path, summer_path, winter_path) {
+    library(tidyverse)
+    library(janitor)
+
+    # Read the datasets
+    gdp <- read_rds(gdp_path) %>% clean_names()
+    summer <- read_rds(summer_path) %>% clean_names()
+    winter <- read_rds(winter_path) %>% clean_names()
+
+    # Add Olympics type
+    summer <- summer %>% mutate(olympics = "Summer")
+    winter <- winter %>% mutate(olympics = "Winter")
+
+    # Bind the summer and winter Olympics datasets
+    sw_oly <- bind_rows(summer, winter)
+
+    # Join with GDP data
+    sw_gdp <- left_join(sw_oly, gdp, by = c("country" = "code")) %>%
+        select(-country) %>%
+        rename(country = country.y)
+
+    # Join summer Olympics with GDP data and clean the result
+    summer_gdp <- left_join(summer, gdp, by = c("country" = "code"))
+    summer_gdp_cleaned <- summer_gdp %>%
+        select(-country) %>%
+        rename(country = country.y)
+
+    return(list(sw_gdp = sw_gdp, summer_gdp_cleaned = summer_gdp_cleaned))
+}
+```
+Again some data wrangling to join all 3 data sets. Summer and Winter Olympics could just be row binded since they have the same columns. A variable was just created to keep track of whether it was Winter or Summer olympics.
+
+```{r}
+#Plotting India's performance relative to other emerging market economies
+analyze_medals_gdp <- function(data, target_country = "India", gdp_threshold = 0.5) {
+    library(dplyr)
+    library(ggplot2)
+
+    # Calculate mean GDP per capita for the target country
+    target_gdp_per_capita <- data %>%
+        filter(country == target_country) %>%
+        summarize(mean_gdp_per_capita = mean(gdp_per_capita, na.rm = TRUE)) %>%
+        pull(mean_gdp_per_capita)
+
+    # Inspect the distribution of GDP per capita for all countries
+    gdp_distribution <- data %>%
+        group_by(country) %>%
+        summarize(mean_gdp_per_capita = mean(gdp_per_capita, na.rm = TRUE)) %>%
+        arrange(mean_gdp_per_capita)
+
+    # Find countries with similar GDP per capita
+    similar_countries <- data %>%
+        filter(gdp_per_capita >= (target_gdp_per_capita * (1 - gdp_threshold)) &
+                   gdp_per_capita <= (target_gdp_per_capita * (1 + gdp_threshold))) %>%
+        pull(country) %>%
+        unique()
+
+    # Filter the data for the target country and similar economies
+    filtered_data <- data %>%
+        filter(country %in% c(target_country, similar_countries))
+
+    # Ensure team sport medals are counted as one medal
+    team_medals <- filtered_data %>%
+        distinct(year, city, sport, discipline, event, medal, country, gdp_per_capita)
+
+    # Summarize the medal counts for the target country and similar economies
+    medal_counts <- team_medals %>%
+        filter(medal %in% c("Gold", "Silver", "Bronze")) %>%
+        group_by(country, medal) %>%
+        summarize(medal_count = n()) %>%
+        ungroup()
+
+    # Add total medals count for each country
+    total_medals <- medal_counts %>%
+        group_by(country) %>%
+        summarize(total_medals = sum(medal_count))
+
+    # Merge the data
+    medal_summary <- medal_counts %>%
+        left_join(total_medals, by = "country") %>%
+        arrange(desc(total_medals))
+
+    # Get the GDP per capita for each country
+    gdp_per_capita_summary <- team_medals %>%
+        group_by(country) %>%
+        summarize(mean_gdp_per_capita = mean(gdp_per_capita, na.rm = TRUE))
+
+    # Merge gdp_per_capita_summary with medal_summary to get the GDP per capita for each country
+    medal_summary <- medal_summary %>%
+        left_join(gdp_per_capita_summary, by = "country")
+
+    # Define custom colors for medals
+    medal_colors <- c("Gold" = "#FFD700", "Silver" = "#C0C0C0", "Bronze" = "#CD7F32")
+
+    # Create the plot
+    plot <- ggplot(medal_summary, aes(x = reorder(country, total_medals), y = medal_count, fill = medal)) +
+        geom_col() +
+        geom_text(aes(label = medal_count), position = position_stack(vjust = 0.5), color = "black") +
+        geom_text(aes(x = reorder(country, total_medals), y = total_medals, label = round(mean_gdp_per_capita, 2)),
+                  vjust = 0.5, hjust = -0.1, size = 5, color = "black") +
+        scale_fill_manual(values = medal_colors) +
+        coord_flip() +
+        labs(title = "Medal Count Comparison: India vs. Similarly Sized Economies",
+             subtitle = "GDP per capita for each country is printed to the right of each column",
+             x = "Country",
+             y = "Medal Count") +
+        theme_minimal()
+
+    return(plot)
+}
+
+```
+This function looks at India's GDP and then takes countries with similar GDP to India and compares the amount of medals won while also accounting for whether it was a team event taking those medals as 1. the geom_col() also accounts for the number of bronze silver and gold medals won.
+
+```{r}
+plot_medal_counts_over_time <- function(data) {
+    library(dplyr)
+    library(ggplot2)
+
+    # Summarize medal counts by year, country, and Olympics type
+    medal_counts <- data %>%
+        filter(medal %in% c("Gold", "Silver", "Bronze")) %>%
+        group_by(year, country, olympics) %>%
+        summarize(medal_count = n()) %>%
+        ungroup()
+
+    # Select a few countries to visualize
+    selected_countries <- c("United States", "South Africa", "Germany", "United Kingdom", "Norway", "China")
+
+    # Filter the data for the selected countries
+    filtered_data <- medal_counts %>%
+        filter(country %in% selected_countries)
+
+    # Plot the time-series analysis side-by-side for selected countries
+    ggplot(filtered_data, aes(x = year, y = medal_count, color = olympics, group = olympics)) +
+        geom_line() +
+        facet_wrap(~ country, scales = "free_y") +
+        labs(title = "Medals Won Over Time in Selected Countries",
+             subtitle = "Comparing dominance in Winter and Summer Olympics",
+             x = "Year",
+             y = "Number of Medals",
+             color = "Olympics") +
+        theme_minimal()
+}
+```
+This plots a line plot over time of the amount of medals won over the years by a selected group of countries.
+
+```{r}
+plot_medals_vs_gdp <- function(data) {
+    library(dplyr)
+    library(ggplot2)
+    library(countrycode)
+
+    # Create a continent variable
+    data <- data %>%
+        mutate(continent = countrycode(sourcevar = country, origin = "country.name", destination = "continent"))
+
+    # Summarize the number of medals won by each country
+    medal_summary <- data %>%
+        group_by(country, continent, gdp_per_capita, population) %>%
+        summarize(total_medals = n(), .groups = 'drop')
+
+    # Remove rows with non-finite values
+    medal_summary <- medal_summary %>%
+        filter(is.finite(gdp_per_capita) & is.finite(total_medals) & is.finite(population))
+
+    # Calculate medals per population
+    medal_summary <- medal_summary %>%
+        mutate(medals_per_population = total_medals / population)
+
+    # Identify the top 5 countries by medals per population
+    top5_countries <- medal_summary %>%
+        arrange(desc(medals_per_population)) %>%
+        slice(1:5)
+
+    # Create the point plot with continent colors and enhanced aesthetics
+    ggplot(medal_summary, aes(x = gdp_per_capita, y = total_medals, size = population, color = continent)) +
+        geom_point(alpha = 0.7) +
+        geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", aes(group = 1)) +  # Add regression line with grouping
+        geom_text(data = top5_countries, aes(label = country), vjust = -1, size = 5) +  # Add country labels for top 5
+        scale_size_continuous(name = "Population", range = c(3, 12)) +  # Adjust point size range
+        scale_x_continuous(labels = scales::dollar) +  # Format x-axis labels as dollars
+        scale_y_continuous(labels = scales::comma) +  # Format y-axis labels with commas
+        labs(title = "Medals Won by GDP per Capita",
+             subtitle = "The 5 labeled countries perform best relative to their population size.",
+             x = "GDP per Capita",
+             y = "Total Medals",
+             caption = "Note: The size of the bubble represents the population size.",
+             color = "Continent") +
+        theme_minimal() +
+        theme(
+            legend.position = "bottom",
+            legend.box = "horizontal",
+            plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+            plot.subtitle = element_text(size = 14, hjust = 0.5),
+            axis.title = element_text(size = 14, face = "bold"),
+            axis.text = element_text(size = 12)
+        )
+}
+```
+This creates a point plot that checks the amount of medals won measured against GDP per Capita. A continent variable was created so that the bubbles were coloured with respect to there continent 
+
+```{r}
+#Medal for badminton per country
+plot_badminton_medals <- function(data) {
+    library(dplyr)
+    library(ggplot2)
+
+    # Filter data for Badminton
+    badmin_data <- data %>% filter(discipline == "Badminton")
+
+    # Summarize medal counts by country for Badminton
+    top_countries <- badmin_data %>%
+        group_by(country) %>%
+        summarize(total_medals = n()) %>%
+        arrange(desc(total_medals)) %>%
+        head(10)
+
+    # Plot top countries by medals
+    ggplot(top_countries, aes(x = reorder(country, total_medals), y = total_medals, fill = country)) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(title = "Top 10 Countries by Badminton Medals",
+             x = "Country",
+             y = "Total Medals",
+             fill = "Country") +
+        theme_minimal()
+}
+```
+
+This function just plots the amount of medals won in badminton by the top 10 different countries. A bar plot was used to show this and coord_flip() was used to flip the bar around. reorder() is used to order the countries from by most medals to least medals. 

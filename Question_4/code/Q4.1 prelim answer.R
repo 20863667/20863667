@@ -1,7 +1,8 @@
 #Question 4.1 rough ideas
+#Im including this file because the code works here but breaks in the readme
 library(tidyverse)
 library(janitor)
-pacman::p_load(ggrepel)
+
 
 #Read the datasets
 gdp <- read_rds("data/GDP.rds") %>% clean_names()
@@ -30,7 +31,6 @@ gdp_distribution <- summer_gdp_cleaned %>%
     summarize(mean_gdp_per_capita = mean(gdp_per_capita, na.rm = TRUE)) %>%
     arrange(mean_gdp_per_capita)
 
-print(gdp_distribution)
 
 # Define a threshold for "similarly sized economies". Adjust as necessary
 gdp_threshold <- 0.5 # 50% threshold for debugging
@@ -41,7 +41,6 @@ similar_countries <- summer_gdp_cleaned %>%
     pull(country) %>%
     unique()
 
-print(similar_countries)
 
 # Filter the data for India and similar economies
 filtered_data <- summer_gdp_cleaned %>%
@@ -103,7 +102,7 @@ medal_counts <- sw_gdp %>%
 
 # Select a few countries to visualize
 selected_countries <- c("United States", "South Africa", "Germany", "United Kingdom", "Norway", "China")
-print(selected_countries)
+
 # Filter the data for the selected countries
 filtered_data <- medal_counts %>%
     filter(country %in% selected_countries)
@@ -165,3 +164,25 @@ ggplot(medal_summary, aes(x = gdp_per_capita, y = total_medals, size = populatio
         axis.title = element_text(size = 14, face = "bold"),
         axis.text = element_text(size = 12)
     )
+
+#Q4.4
+
+badmin_data <- sw_gdp %>% filter(discipline == "Badminton")
+
+# Summarize medal counts by country for Badminton
+top_countries <- badmin_data %>%
+    group_by(country) %>%
+    summarize(total_medals = n()) %>%
+    arrange(desc(total_medals)) %>%
+    head(10)
+
+# Plot top countries by medals
+ggplot(top_countries, aes(x = reorder(country, total_medals), y = total_medals, fill = country)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = "Top 10 Countries by Badminton Medals",
+         x = "Country",
+         y = "Total Medals",
+         fill = "Country") +
+    theme_minimal()
+
